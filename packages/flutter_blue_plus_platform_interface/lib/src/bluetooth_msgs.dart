@@ -501,7 +501,11 @@ class BmCharacteristicData {
       serviceUuid: Guid(json['service_uuid']),
       characteristicUuid: Guid(json['characteristic_uuid']),
       instanceId: json['instance_id'],
-      value: json['value'] as Uint8List,
+      // darwin sends NSNull for `value` on error responses (e.g. ATT
+      // "Encryption is insufficient"). A non-nullable cast would throw here
+      // and silently drop the event before it reaches any listener, so the
+      // in-flight read/write would only fail via its 15s timeout.
+      value: json['value'] as Uint8List? ?? Uint8List(0),
       success: json['success'] != 0,
       errorCode: json['error_code'],
       errorString: json['error_string'],
@@ -646,7 +650,8 @@ class BmDescriptorData {
       characteristicUuid: Guid(json['characteristic_uuid']),
       instanceId: json['instance_id'],
       descriptorUuid: Guid(json['descriptor_uuid']),
-      value: json['value'] as Uint8List,
+      // Same as BmCharacteristicData: darwin sends NSNull on error responses.
+      value: json['value'] as Uint8List? ?? Uint8List(0),
       success: json['success'] != 0,
       errorCode: json['error_code'],
       errorString: json['error_string'],
