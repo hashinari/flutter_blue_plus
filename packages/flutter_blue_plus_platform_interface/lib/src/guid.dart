@@ -5,6 +5,19 @@
 class Guid {
   final List<int> bytes;
 
+  // Cached string forms. `bytes` is never mutated after construction
+  // (FBP creates a Guid per platform message and only reads it), so the
+  // representations can be computed once per instance.
+  //
+  // Without the cache, `str128` rebuilt the string (5 sublists + hex
+  // encode + concat) on every call. `==`, `hashCode` and `toString()`
+  // all go through it, and FBP evaluates them per delivered notification
+  // for every subscribed characteristic (`lastValueStream` filters) and
+  // for the last-value bookkeeping key. With many links streaming, that
+  // string work alone was ~15% of the Dart main thread.
+  String? _str128;
+  String? _str;
+
   Guid.empty() : bytes = List.filled(16, 0);
 
   Guid.fromBytes(this.bytes) : assert(_checkLen(bytes.length), 'GUID must be 16, 32, or 128 bit.');
@@ -46,7 +59,9 @@ class Guid {
   }
 
   // 128-bit representation
-  String get str128 {
+  String get str128 => _str128 ??= _buildStr128();
+
+  String _buildStr128() {
     if (bytes.length == 2) {
       // 16-bit uuid
       return '0000${_hexEncode(bytes)}-0000-1000-8000-00805f9b34fb'.toLowerCase();
@@ -65,26 +80,29 @@ class Guid {
   }
 
   // shortest representation
-  String get str {
-    bool starts = str128.startsWith('0000');
-    bool ends = str128.contains('-0000-1000-8000-00805f9b34fb');
+  String get str => _str ??= _buildStr();
+
+  String _buildStr() {
+    final s = str128;
+    bool starts = s.startsWith('0000');
+    bool ends = s.contains('-0000-1000-8000-00805f9b34fb');
     if (starts && ends) {
       // 16-bit
-      return str128.substring(4, 8);
+      return s.substring(4, 8);
     }
     if (ends) {
       // 32-bit
-      return str128.substring(0, 8);
+      return s.substring(0, 8);
     }
     // 128-bit
-    return str128;
+    return s;
   }
 
   @override
   String toString() => str;
 
   @override
-  operator ==(other) => other is Guid && str128 == other.str128;
+  operator ==(other) => identical(this, other) || (other is Guid && str128 == other.str128);
 
   @override
   int get hashCode => str128.hashCode;
