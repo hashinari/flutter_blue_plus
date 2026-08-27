@@ -61,22 +61,19 @@ class Guid {
   // 128-bit representation
   String get str128 => _str128 ??= _buildStr128();
 
+  // _hexEncode always yields lowercase, so no toLowerCase() pass is needed.
   String _buildStr128() {
     if (bytes.length == 2) {
       // 16-bit uuid
-      return '0000${_hexEncode(bytes)}-0000-1000-8000-00805f9b34fb'.toLowerCase();
+      return '0000${_hexEncode(bytes)}-0000-1000-8000-00805f9b34fb';
     }
     if (bytes.length == 4) {
       // 32-bit uuid
-      return '${_hexEncode(bytes)}-0000-1000-8000-00805f9b34fb'.toLowerCase();
+      return '${_hexEncode(bytes)}-0000-1000-8000-00805f9b34fb';
     }
-    // 128-bit uuid
-    String one = _hexEncode(bytes.sublist(0, 4));
-    String two = _hexEncode(bytes.sublist(4, 6));
-    String three = _hexEncode(bytes.sublist(6, 8));
-    String four = _hexEncode(bytes.sublist(8, 10));
-    String five = _hexEncode(bytes.sublist(10, 16));
-    return "$one-$two-$three-$four-$five".toLowerCase();
+    // 128-bit uuid: 8-4-4-4-12
+    final h = _hexEncode(bytes);
+    return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
   }
 
   // shortest representation
@@ -114,19 +111,43 @@ class Guid {
   String get uuid => str;
 }
 
+// Lowercase hex encode / decode without per-byte substring, int.parse,
+// toRadixString or map/join. These run for every Guid FBP builds out of a
+// platform message (a few per delivered notification), so they are kept
+// as plain loops over char codes.
+
+const String _hexDigits = '0123456789abcdef';
+
 String _hexEncode(List<int> numbers) {
-  return numbers.map((n) => (n & 0xFF).toRadixString(16).padLeft(2, '0')).join();
+  final codes = List<int>.filled(numbers.length * 2, 0);
+  int j = 0;
+  for (final n in numbers) {
+    final b = n & 0xFF;
+    codes[j++] = _hexDigits.codeUnitAt(b >> 4);
+    codes[j++] = _hexDigits.codeUnitAt(b & 0x0F);
+  }
+  return String.fromCharCodes(codes);
+}
+
+int _hexValue(int c) {
+  if (c >= 0x30 && c <= 0x39) return c - 0x30; // 0-9
+  if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10; // a-f
+  if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10; // A-F
+  return -1;
 }
 
 List<int>? _tryHexDecode(String hex) {
-  List<int> numbers = [];
+  if (hex.length.isOdd) {
+    return null;
+  }
+  final numbers = List<int>.filled(hex.length ~/ 2, 0);
   for (int i = 0; i < hex.length; i += 2) {
-    String hexPart = hex.substring(i, i + 2);
-    int? num = int.tryParse(hexPart, radix: 16);
-    if (num == null) {
+    final hi = _hexValue(hex.codeUnitAt(i));
+    final lo = _hexValue(hex.codeUnitAt(i + 1));
+    if (hi < 0 || lo < 0) {
       return null;
     }
-    numbers.add(num);
+    numbers[i ~/ 2] = (hi << 4) | lo;
   }
   return numbers;
 }

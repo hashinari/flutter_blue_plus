@@ -49,8 +49,17 @@ void main() {
       expect(Guid.empty(), Guid.empty());
     });
 
+    test('encodes every byte value as two lowercase hex digits', () {
+      final g = Guid.fromBytes(List<int>.generate(16, (i) => i * 17));
+      expect(g.str128, '00112233-4455-6677-8899-aabbccddeeff');
+      expect(Guid.fromBytes([0x00, 0xff]).str, '00ff');
+      expect(Guid('00FF'), Guid.fromBytes([0x00, 0xff]));
+    });
+
     test('rejects invalid input', () {
       expect(() => Guid('zz'), throwsFormatException);
+      expect(() => Guid('0g0'), throwsFormatException);
+      expect(() => Guid('180'), throwsFormatException);
       expect(() => Guid('00112233'), returnsNormally);
       expect(() => Guid('001122'), throwsFormatException);
     });
